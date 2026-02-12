@@ -20,8 +20,9 @@ def compute_confidence_stats(df: pd.DataFrame, confidence_col: str = 'confidence
     if df.empty or confidence_col not in df.columns:
         return {}
     
-    # Remove null/nan/inf values
-    confidence = df[confidence_col].replace([np.inf, -np.inf], np.nan).dropna()
+    # Convert to float64 to prevent overflow, then remove null/nan/inf values
+    # Source data uses float16 which can overflow in numpy operations
+    confidence = df[confidence_col].astype('float64').replace([np.inf, -np.inf], np.nan).dropna()
     
     if len(confidence) == 0:
         return {}
@@ -73,14 +74,18 @@ def compute_google_books_stats(df: pd.DataFrame) -> Dict[str, Any]:
         return stats
     
     # Add Google Books specific metrics
+    # Convert numeric columns to float64 to prevent overflow
+    nb_lines = df['nb_lines'].astype('float64') if 'nb_lines' in df.columns else pd.Series([])
+    text_lengths = df['text'].str.len().astype('float64') if 'text' in df.columns else pd.Series([])
+    
     stats.update({
         'total_records': len(df),
         'successful_pages': int(df['ok'].sum()) if 'ok' in df.columns else 0,
         'failed_pages': int((~df['ok']).sum()) if 'ok' in df.columns else 0,
-        'total_lines': int(df['nb_lines'].sum()) if 'nb_lines' in df.columns else 0,
-        'mean_lines_per_page': float(df['nb_lines'].mean()) if 'nb_lines' in df.columns else 0.0,
-        'total_text_length': int(df['text'].str.len().sum()) if 'text' in df.columns else 0,
-        'mean_text_length_per_page': float(df['text'].str.len().mean()) if 'text' in df.columns else 0.0,
+        'total_lines': int(nb_lines.sum()) if len(nb_lines) > 0 else 0,
+        'mean_lines_per_page': float(nb_lines.mean()) if len(nb_lines) > 0 else 0.0,
+        'total_text_length': int(text_lengths.sum()) if len(text_lengths) > 0 else 0,
+        'mean_text_length_per_page': float(text_lengths.mean()) if len(text_lengths) > 0 else 0.0,
     })
     
     # Language distribution (count pages by language)
@@ -117,12 +122,16 @@ def compute_google_vision_stats(df: pd.DataFrame) -> Dict[str, Any]:
         return stats
     
     # Add Google Vision specific metrics
+    # Convert numeric columns to float64 to prevent overflow
+    nb_lines_tib = df['nb_lines_tib'].astype('float64') if 'nb_lines_tib' in df.columns else pd.Series([])
+    text_len = df['text_len'].astype('float64') if 'text_len' in df.columns else pd.Series([])
+    
     stats.update({
         'total_records': len(df),
-        'total_tibetan_lines': int(df['nb_lines_tib'].sum()) if 'nb_lines_tib' in df.columns else 0,
-        'mean_tibetan_lines_per_page': float(df['nb_lines_tib'].mean()) if 'nb_lines_tib' in df.columns else 0.0,
-        'total_text_length': int(df['text_len'].sum()) if 'text_len' in df.columns else 0,
-        'mean_text_length_per_page': float(df['text_len'].mean()) if 'text_len' in df.columns else 0.0,
+        'total_tibetan_lines': int(nb_lines_tib.sum()) if len(nb_lines_tib) > 0 else 0,
+        'mean_tibetan_lines_per_page': float(nb_lines_tib.mean()) if len(nb_lines_tib) > 0 else 0.0,
+        'total_text_length': int(text_len.sum()) if len(text_len) > 0 else 0,
+        'mean_text_length_per_page': float(text_len.mean()) if len(text_len) > 0 else 0.0,
     })
     
     # Language distribution
