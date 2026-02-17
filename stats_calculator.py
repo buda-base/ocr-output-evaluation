@@ -223,6 +223,9 @@ def compute_ocrv1_stats(df: pd.DataFrame) -> Dict[str, Any]:
         stats['pages_with_text'] = int(pages_with_text)
     
     return stats
+
+
+def compute_google_vision_stats(df: pd.DataFrame) -> Dict[str, Any]:
     """
     Compute statistics specific to Google Vision format
     
