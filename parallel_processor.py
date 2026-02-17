@@ -9,8 +9,8 @@ from tqdm import tqdm
 import logging
 import os
 
-from config import S3_BUCKET, S3_GB_PATH_TEMPLATE, S3_GV_PATH_TEMPLATE, ENABLE_PERPLEXITY
-from stats_calculator import compute_google_books_stats, compute_google_vision_stats
+from config import S3_BUCKET, S3_GB_PATH_TEMPLATE, S3_GV_PATH_TEMPLATE, S3_OCRV1_PATH_TEMPLATE, ENABLE_PERPLEXITY
+from stats_calculator import compute_google_books_stats, compute_google_vision_stats, compute_ocrv1_stats
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
