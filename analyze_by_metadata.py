@@ -49,6 +49,25 @@ def analyze_by_system(df: pd.DataFrame):
                 print(f"  P33 (best third): {perp_valid.quantile(0.33):.2f}")
                 print(f"  P66 (worst third): {perp_valid.quantile(0.66):.2f}")
                 print(f"  Volumes with valid perplexity: {len(perp_valid):,} ({len(perp_valid)/len(system_df)*100:.1f}%)")
+            
+            # New detailed metrics
+            if 'pages_no_tibetan_text' in system_df.columns:
+                total_pages = system_df['total_records'].sum() if 'total_records' in system_df.columns else 0
+                no_tibetan = system_df['pages_no_tibetan_text'].sum()
+                model_rejection = system_df['pages_model_rejection'].sum()
+                
+                print(f"\n  Perplexity Issues Breakdown:")
+                if total_pages > 0:
+                    print(f"    Pages with no Tibetan text: {no_tibetan:,} ({no_tibetan/total_pages*100:.1f}%)")
+                    print(f"    Pages with model rejection: {model_rejection:,} ({model_rejection/total_pages*100:.1f}%)")
+                else:
+                    print(f"    Pages with no Tibetan text: {no_tibetan:,}")
+                    print(f"    Pages with model rejection: {model_rejection:,}")
+                
+                # Check for lines but no text (OCR failure)
+                if 'pages_with_lines' in system_df.columns and 'pages_with_text' in system_df.columns:
+                    lines_but_no_text = (system_df['pages_with_lines'] - system_df['pages_with_text']).clip(lower=0).sum()
+                    print(f"    Pages with lines but no text: {lines_but_no_text:,}")
 
 
 def analyze_by_print_method(df: pd.DataFrame):

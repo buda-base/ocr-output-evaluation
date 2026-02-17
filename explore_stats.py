@@ -74,20 +74,46 @@ def print_summary(con: duckdb.DuckDBPyConnection):
             pass
         
         if has_perplexity:
-            result = con.execute("""
-                SELECT 
-                    COUNT(*) as num_volumes,
-                    SUM(total_pages) as total_pages,
-                    AVG(mean_confidence) as avg_mean_confidence,
-                    AVG(median_confidence) as avg_median_confidence,
-                    AVG(pct_high_conf) as avg_pct_high_conf,
-                    AVG(pct_medium_conf) as avg_pct_medium_conf,
-                    AVG(pct_low_conf) as avg_pct_low_conf,
-                    AVG(CASE WHEN mean_perplexity != 'inf' THEN mean_perplexity ELSE NULL END) as avg_mean_perplexity,
-                    AVG(CASE WHEN median_perplexity != 'inf' THEN median_perplexity ELSE NULL END) as avg_median_perplexity,
-                    SUM(CASE WHEN mean_perplexity = 'inf' THEN 1 ELSE 0 END) as inf_perplexity_count
-                FROM google_books
-            """).fetchone()
+            # Check for detailed perplexity columns
+            has_detailed_ppl = False
+            try:
+                con.execute("SELECT pages_no_tibetan_text FROM google_books LIMIT 1")
+                has_detailed_ppl = True
+            except:
+                pass
+
+            if has_detailed_ppl:
+                result = con.execute("""
+                    SELECT 
+                        COUNT(*) as num_volumes,
+                        SUM(total_pages) as total_pages,
+                        AVG(mean_confidence) as avg_mean_confidence,
+                        AVG(median_confidence) as avg_median_confidence,
+                        AVG(pct_high_conf) as avg_pct_high_conf,
+                        AVG(pct_medium_conf) as avg_pct_medium_conf,
+                        AVG(pct_low_conf) as avg_pct_low_conf,
+                        AVG(CASE WHEN mean_perplexity != 'inf' THEN mean_perplexity ELSE NULL END) as avg_mean_perplexity,
+                        AVG(CASE WHEN median_perplexity != 'inf' THEN median_perplexity ELSE NULL END) as avg_median_perplexity,
+                        SUM(CASE WHEN mean_perplexity = 'inf' THEN 1 ELSE 0 END) as inf_perplexity_count,
+                        SUM(pages_no_tibetan_text) as total_no_tibetan,
+                        SUM(pages_model_rejection) as total_model_rejection
+                    FROM google_books
+                """).fetchone()
+            else:
+                result = con.execute("""
+                    SELECT 
+                        COUNT(*) as num_volumes,
+                        SUM(total_pages) as total_pages,
+                        AVG(mean_confidence) as avg_mean_confidence,
+                        AVG(median_confidence) as avg_median_confidence,
+                        AVG(pct_high_conf) as avg_pct_high_conf,
+                        AVG(pct_medium_conf) as avg_pct_medium_conf,
+                        AVG(pct_low_conf) as avg_pct_low_conf,
+                        AVG(CASE WHEN mean_perplexity != 'inf' THEN mean_perplexity ELSE NULL END) as avg_mean_perplexity,
+                        AVG(CASE WHEN median_perplexity != 'inf' THEN median_perplexity ELSE NULL END) as avg_median_perplexity,
+                        SUM(CASE WHEN mean_perplexity = 'inf' THEN 1 ELSE 0 END) as inf_perplexity_count
+                    FROM google_books
+                """).fetchone()
         else:
             result = con.execute("""
                 SELECT 
@@ -115,6 +141,10 @@ def print_summary(con: duckdb.DuckDBPyConnection):
             print(f"  Avg median perplexity: {result[8]:.2f}")
             if result[9] > 0:
                 print(f"  Volumes with infinite perplexity: {result[9]:,}")
+            
+            if has_detailed_ppl:
+                print(f"  Total pages with no Tibetan text: {result[10]:,}")
+                print(f"  Total pages with model rejection: {result[11]:,}")
     except Exception as e:
         print(f"\nGoogle Books: No data available ({e})")
     
@@ -129,20 +159,46 @@ def print_summary(con: duckdb.DuckDBPyConnection):
             pass
         
         if has_perplexity:
-            result = con.execute("""
-                SELECT 
-                    COUNT(*) as num_volumes,
-                    SUM(total_records) as total_pages,
-                    AVG(mean_confidence) as avg_mean_confidence,
-                    AVG(median_confidence) as avg_median_confidence,
-                    AVG(pct_high_conf) as avg_pct_high_conf,
-                    AVG(pct_medium_conf) as avg_pct_medium_conf,
-                    AVG(pct_low_conf) as avg_pct_low_conf,
-                    AVG(CASE WHEN mean_perplexity != 'inf' THEN mean_perplexity ELSE NULL END) as avg_mean_perplexity,
-                    AVG(CASE WHEN median_perplexity != 'inf' THEN median_perplexity ELSE NULL END) as avg_median_perplexity,
-                    SUM(CASE WHEN mean_perplexity = 'inf' THEN 1 ELSE 0 END) as inf_perplexity_count
-                FROM google_vision
-            """).fetchone()
+            # Check for detailed perplexity columns
+            has_detailed_ppl = False
+            try:
+                con.execute("SELECT pages_no_tibetan_text FROM google_vision LIMIT 1")
+                has_detailed_ppl = True
+            except:
+                pass
+
+            if has_detailed_ppl:
+                result = con.execute("""
+                    SELECT 
+                        COUNT(*) as num_volumes,
+                        SUM(total_records) as total_pages,
+                        AVG(mean_confidence) as avg_mean_confidence,
+                        AVG(median_confidence) as avg_median_confidence,
+                        AVG(pct_high_conf) as avg_pct_high_conf,
+                        AVG(pct_medium_conf) as avg_pct_medium_conf,
+                        AVG(pct_low_conf) as avg_pct_low_conf,
+                        AVG(CASE WHEN mean_perplexity != 'inf' THEN mean_perplexity ELSE NULL END) as avg_mean_perplexity,
+                        AVG(CASE WHEN median_perplexity != 'inf' THEN median_perplexity ELSE NULL END) as avg_median_perplexity,
+                        SUM(CASE WHEN mean_perplexity = 'inf' THEN 1 ELSE 0 END) as inf_perplexity_count,
+                        SUM(pages_no_tibetan_text) as total_no_tibetan,
+                        SUM(pages_model_rejection) as total_model_rejection
+                    FROM google_vision
+                """).fetchone()
+            else:
+                result = con.execute("""
+                    SELECT 
+                        COUNT(*) as num_volumes,
+                        SUM(total_records) as total_pages,
+                        AVG(mean_confidence) as avg_mean_confidence,
+                        AVG(median_confidence) as avg_median_confidence,
+                        AVG(pct_high_conf) as avg_pct_high_conf,
+                        AVG(pct_medium_conf) as avg_pct_medium_conf,
+                        AVG(pct_low_conf) as avg_pct_low_conf,
+                        AVG(CASE WHEN mean_perplexity != 'inf' THEN mean_perplexity ELSE NULL END) as avg_mean_perplexity,
+                        AVG(CASE WHEN median_perplexity != 'inf' THEN median_perplexity ELSE NULL END) as avg_median_perplexity,
+                        SUM(CASE WHEN mean_perplexity = 'inf' THEN 1 ELSE 0 END) as inf_perplexity_count
+                    FROM google_vision
+                """).fetchone()
         else:
             result = con.execute("""
                 SELECT 
@@ -170,6 +226,10 @@ def print_summary(con: duckdb.DuckDBPyConnection):
             print(f"  Avg median perplexity: {result[8]:.2f}")
             if result[9] > 0:
                 print(f"  Volumes with infinite perplexity: {result[9]:,}")
+            
+            if has_detailed_ppl:
+                print(f"  Total pages with no Tibetan text: {result[10]:,}")
+                print(f"  Total pages with model rejection: {result[11]:,}")
     except Exception as e:
         print(f"\nGoogle Vision: No data available ({e})")
 

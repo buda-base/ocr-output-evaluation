@@ -137,7 +137,7 @@ def compute_google_books_stats(df: pd.DataFrame) -> Dict[str, Any]:
         # Flatten the list of languages and count
         all_langs = []
         for langs in df['languages'].dropna():
-            if isinstance(langs, list):
+            if isinstance(langs, (list, np.ndarray)):
                 all_langs.extend(langs)
         
         if all_langs:
@@ -189,7 +189,7 @@ def compute_ocrv1_stats(df: pd.DataFrame) -> Dict[str, Any]:
     if 'line_texts' in df.columns:
         # Convert list of strings to single text per page
         df = df.copy()
-        df['text'] = df['line_texts'].apply(lambda x: '\n'.join(x) if isinstance(x, list) else '')
+        df['text'] = df['line_texts'].apply(lambda x: '\n'.join(x) if isinstance(x, (list, np.ndarray)) else '')
         logger.debug(f"Created 'text' column from 'line_texts' field")
     else:
         logger.warning(f"OCRv1 DataFrame missing 'line_texts' column. Columns: {df.columns.tolist()}")
@@ -270,7 +270,7 @@ def compute_google_vision_stats(df: pd.DataFrame) -> Dict[str, Any]:
     if 'languages' in df.columns:
         all_langs = []
         for langs in df['languages'].dropna():
-            if isinstance(langs, list):
+            if isinstance(langs, (list, np.ndarray)):
                 all_langs.extend(langs)
         
         if all_langs:
