@@ -187,12 +187,13 @@ def process_volumes_batch(volumes: List[Dict[str, str]],
                           max_workers: int = 4,
                           desc: str = "Processing volumes") -> pd.DataFrame:
     """
-    Process volumes in batches to manage memory
+    Process volumes in batches to manage memory.
+    Creates worker pool ONCE and reuses it for all batches.
     
     Args:
         volumes: List of volume info dicts
         processor_func: Function to process each volume
-        batch_size: Number of volumes per batch
+        batch_size: Number of volumes per batch (for memory management)
         max_workers: Maximum number of parallel workers
         desc: Description for progress bar
     
@@ -200,25 +201,38 @@ def process_volumes_batch(volumes: List[Dict[str, str]],
         DataFrame with all results
     """
     all_results = []
+    total_batches = (len(volumes) + batch_size - 1) // batch_size
     
-    # Process in batches
-    for i in range(0, len(volumes), batch_size):
-        batch = volumes[i:i+batch_size]
-        batch_num = i // batch_size + 1
-        total_batches = (len(volumes) + batch_size - 1) // batch_size
-        
-        logger.info(f"Processing batch {batch_num}/{total_batches} ({len(batch)} volumes)")
-        
-        batch_results = process_volumes_parallel(
-            batch, 
-            processor_func, 
-            max_workers=max_workers,
-            desc=f"{desc} (batch {batch_num}/{total_batches})"
-        )
-        
-        all_results.extend(batch_results)
-        
-        logger.info(f"Batch {batch_num} complete. Processed {len(batch_results)}/{len(batch)} volumes successfully")
+    logger.info(f"Processing {len(volumes)} volumes in {total_batches} batches with {max_workers} workers")
+    logger.info("Initializing worker pool (models will load once per worker)...")
+    
+    # Create ProcessPoolExecutor ONCE for all batches
+    # Workers are initialized once and reused across all batches
+    with ProcessPoolExecutor(max_workers=max_workers, initializer=_init_worker_process) as executor:
+        # Process in batches
+        for i in range(0, len(volumes), batch_size):
+            batch = volumes[i:i+batch_size]
+            batch_num = i // batch_size + 1
+            
+            logger.info(f"Submitting batch {batch_num}/{total_batches} ({len(batch)} volumes)")
+            
+            # Submit all tasks in this batch to the EXISTING worker pool
+            future_to_volume = {
+                executor.submit(processor_func, vol): vol 
+                for vol in batch
+            }
+            
+            # Process completed tasks with progress bar
+            batch_results = []
+            with tqdm(total=len(batch), desc=f"{desc} (batch {batch_num}/{total_batches})") as pbar:
+                for future in as_completed(future_to_volume):
+                    result = future.result()
+                    if result is not None:
+                        batch_results.append(result)
+                    pbar.update(1)
+            
+            all_results.extend(batch_results)
+            logger.info(f"Batch {batch_num} complete. Processed {len(batch_results)}/{len(batch)} volumes successfully")
     
     # Convert to DataFrame
     if all_results:
