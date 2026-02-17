@@ -153,13 +153,13 @@ def calculate_perplexity(text: str, kenlm_model: kenlm.Model, sp_model: spm.Sent
         Perplexity score (float), or inf if text is empty/invalid
     """
     if not text or not text.strip():
-        return float('inf')
+        return float('nan')
     
     # Preprocess: normalize and keep only Tibetan text
     text = preprocess_text_for_perplexity(text)
     
     if not text or not text.strip():
-        return float('inf')
+        return float('nan')
     
     log_score = 0.0
     token_count = 0
@@ -185,7 +185,7 @@ def calculate_perplexity(text: str, kenlm_model: kenlm.Model, sp_model: spm.Sent
         token_count += len(tokens) + 1  # +1 for </s> end token
     
     if token_count == 0:
-        return float('inf')
+        return float('nan')
     
     # Calculate perplexity: 10^(-log_score / token_count)
     perplexity = 10.0 ** (-log_score / token_count)
@@ -228,11 +228,23 @@ def compute_perplexity_stats(perplexities: pd.Series) -> dict:
     Returns:
         Dictionary of statistics
     """
-    # Remove infinite values for statistics
+    # Count specific cases
+    total_pages = len(perplexities)
+    pages_no_tibetan = int(perplexities.isna().sum())
+    pages_model_rejection = int(np.isinf(perplexities).sum())
+    
+    # Remove infinite and NaN values for statistics
     valid_perplexities = perplexities.replace([np.inf, -np.inf], np.nan).dropna()
     
+    stats = {
+        'pages_with_valid_perplexity': len(valid_perplexities),
+        'pages_no_tibetan_text': pages_no_tibetan,
+        'pages_model_rejection': pages_model_rejection,
+        'pct_valid_perplexity': float(len(valid_perplexities) / total_pages * 100) if total_pages > 0 else 0.0,
+    }
+    
     if len(valid_perplexities) == 0:
-        return {
+        stats.update({
             'mean_perplexity': float('inf'),
             'median_perplexity': float('inf'),
             'std_perplexity': 0.0,
@@ -243,10 +255,10 @@ def compute_perplexity_stats(perplexities: pd.Series) -> dict:
             'p75_perplexity': float('inf'),
             'p90_perplexity': float('inf'),
             'p95_perplexity': float('inf'),
-            'pages_with_valid_perplexity': 0,
-        }
+        })
+        return stats
     
-    return {
+    stats.update({
         'mean_perplexity': float(valid_perplexities.mean()),
         'median_perplexity': float(valid_perplexities.median()),
         'std_perplexity': float(valid_perplexities.std()),
@@ -257,5 +269,6 @@ def compute_perplexity_stats(perplexities: pd.Series) -> dict:
         'p75_perplexity': float(valid_perplexities.quantile(0.75)),
         'p90_perplexity': float(valid_perplexities.quantile(0.90)),
         'p95_perplexity': float(valid_perplexities.quantile(0.95)),
-        'pages_with_valid_perplexity': len(valid_perplexities),
-    }
+    })
+    
+    return stats

@@ -129,6 +129,7 @@ def compute_google_books_stats(df: pd.DataFrame) -> Dict[str, Any]:
         'mean_lines_per_page': float(nb_lines.mean()) if len(nb_lines) > 0 else 0.0,
         'total_text_length': int(text_lengths.sum()) if len(text_lengths) > 0 else 0,
         'mean_text_length_per_page': float(text_lengths.mean()) if len(text_lengths) > 0 else 0.0,
+        'pages_with_lines': int((nb_lines > 0).sum()) if len(nb_lines) > 0 else 0,
     })
     
     # Language distribution (count pages by language)
@@ -217,11 +218,15 @@ def compute_ocrv1_stats(df: pd.DataFrame) -> Dict[str, Any]:
     
     # Add basic metrics
     text_lengths = df['text'].str.len().astype('float64') if 'text' in df.columns else pd.Series([])
+    nb_lines = df['nb_lines'].astype('float64') if 'nb_lines' in df.columns else pd.Series([])
     
     stats.update({
         'total_records': len(df),
         'total_text_length': int(text_lengths.sum()) if len(text_lengths) > 0 else 0,
         'mean_text_length_per_page': float(text_lengths.mean()) if len(text_lengths) > 0 else 0.0,
+        'total_lines': int(nb_lines.sum()) if len(nb_lines) > 0 else 0,
+        'mean_lines_per_page': float(nb_lines.mean()) if len(nb_lines) > 0 else 0.0,
+        'pages_with_lines': int((nb_lines > 0).sum()) if len(nb_lines) > 0 else 0,
     })
     
     # Count pages with text
@@ -258,6 +263,7 @@ def compute_google_vision_stats(df: pd.DataFrame) -> Dict[str, Any]:
         'mean_tibetan_lines_per_page': float(nb_lines_tib.mean()) if len(nb_lines_tib) > 0 else 0.0,
         'total_text_length': int(text_len.sum()) if len(text_len) > 0 else 0,
         'mean_text_length_per_page': float(text_len.mean()) if len(text_len) > 0 else 0.0,
+        'pages_with_tibetan_lines': int((nb_lines_tib > 0).sum()) if len(nb_lines_tib) > 0 else 0,
     })
     
     # Language distribution
