@@ -30,8 +30,24 @@ def main():
                        help='Limit number of volumes to process (for testing)')
     parser.add_argument('--output-dir', type=str, default=OUTPUT_DIR,
                        help=f'Output directory (default: {OUTPUT_DIR})')
+    parser.add_argument('--enable-perplexity', action='store_true', default=None,
+                       help='Enable perplexity scoring (slower but provides quality metrics)')
+    parser.add_argument('--disable-perplexity', action='store_true', default=False,
+                       help='Disable perplexity scoring')
     
     args = parser.parse_args()
+    
+    # Handle perplexity flags
+    if args.enable_perplexity:
+        os.environ['ENABLE_PERPLEXITY'] = 'true'
+        logger.info("Perplexity scoring ENABLED")
+    elif args.disable_perplexity:
+        os.environ['ENABLE_PERPLEXITY'] = 'false'
+        logger.info("Perplexity scoring DISABLED")
+    else:
+        # Use default from config
+        from config import ENABLE_PERPLEXITY
+        logger.info(f"Perplexity scoring: {'ENABLED' if ENABLE_PERPLEXITY else 'DISABLED'} (default)")
     
     # Create output directory
     os.makedirs(args.output_dir, exist_ok=True)

@@ -27,3 +27,6 @@ SUMMARY_CSV = os.path.join(OUTPUT_DIR, 'summary_stats.csv')
 # Processing configuration
 MAX_WORKERS = min(8, os.cpu_count() or 4)  # Limit parallel workers for memory efficiency
 BATCH_SIZE = 100  # Process volumes in batches to manage memory
+
+# Perplexity configuration
+ENABLE_PERPLEXITY = os.getenv('ENABLE_PERPLEXITY', 'true').lower() in ('true', '1', 'yes')

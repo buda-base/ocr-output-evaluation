@@ -4,6 +4,42 @@ Statistics computation functions for OCR confidence analysis
 import pandas as pd
 import numpy as np
 from typing import Dict, Any, Optional
+import logging
+from config import ENABLE_PERPLEXITY
+
+logger = logging.getLogger(__name__)
+
+# Lazy import for perplexity - only load when needed
+_perplexity_module = None
+_perplexity_models = None
+
+
+def _get_perplexity_scorer():
+    """Lazy load perplexity module and models"""
+    global _perplexity_module, _perplexity_models
+    
+    if not ENABLE_PERPLEXITY:
+        return None, None, None
+    
+    if _perplexity_module is None:
+        try:
+            import perplexity_scorer
+            _perplexity_module = perplexity_scorer
+            logger.info("Perplexity module loaded successfully")
+        except ImportError as e:
+            logger.warning(f"Could not import perplexity_scorer: {e}")
+            return None, None, None
+    
+    if _perplexity_models is None:
+        try:
+            _perplexity_models = _perplexity_module.load_models()
+            logger.info("Perplexity models loaded successfully")
+        except Exception as e:
+            logger.error(f"Failed to load perplexity models: {e}")
+            return _perplexity_module, None, None
+    
+    kenlm_model, sp_model = _perplexity_models
+    return _perplexity_module, kenlm_model, sp_model
 
 
 def compute_confidence_stats(df: pd.DataFrame, confidence_col: str = 'confidence') -> Dict[str, Any]:
@@ -103,6 +139,26 @@ def compute_google_books_stats(df: pd.DataFrame) -> Dict[str, Any]:
                 stats[f'top_lang_{i}'] = lang
                 stats[f'top_lang_{i}_count'] = int(count)
     
+    # Add perplexity statistics if text column is available
+    if 'text' in df.columns:
+        perplexity_module, kenlm_model, sp_model = _get_perplexity_scorer()
+        if perplexity_module and kenlm_model and sp_model:
+            try:
+                logger.info("Calculating perplexity scores for Google Books volume...")
+                # Calculate perplexity for all pages
+                perplexities = perplexity_module.calculate_perplexity_batch(
+                    df['text'].fillna(''), 
+                    kenlm_model, 
+                    sp_model
+                )
+                
+                # Compute perplexity statistics
+                perplexity_stats = perplexity_module.compute_perplexity_stats(perplexities)
+                stats.update(perplexity_stats)
+                logger.info(f"Perplexity stats computed: mean={perplexity_stats['mean_perplexity']:.2f}")
+            except Exception as e:
+                logger.error(f"Error calculating perplexity: {e}")
+    
     return stats
 
 
@@ -146,6 +202,26 @@ def compute_google_vision_stats(df: pd.DataFrame) -> Dict[str, Any]:
             for i, (lang, count) in enumerate(lang_counts.head(3).items(), 1):
                 stats[f'top_lang_{i}'] = lang
                 stats[f'top_lang_{i}_count'] = int(count)
+    
+    # Add perplexity statistics if text column is available
+    if 'text' in df.columns:
+        perplexity_module, kenlm_model, sp_model = _get_perplexity_scorer()
+        if perplexity_module and kenlm_model and sp_model:
+            try:
+                logger.info("Calculating perplexity scores for Google Vision volume...")
+                # Calculate perplexity for all pages
+                perplexities = perplexity_module.calculate_perplexity_batch(
+                    df['text'].fillna(''), 
+                    kenlm_model, 
+                    sp_model
+                )
+                
+                # Compute perplexity statistics
+                perplexity_stats = perplexity_module.compute_perplexity_stats(perplexities)
+                stats.update(perplexity_stats)
+                logger.info(f"Perplexity stats computed: mean={perplexity_stats['mean_perplexity']:.2f}")
+            except Exception as e:
+                logger.error(f"Error calculating perplexity: {e}")
     
     return stats
 
