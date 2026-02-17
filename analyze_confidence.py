@@ -181,7 +181,8 @@ def main():
                 # Print summary statistics
                 logger.info("\nOCRv1-WS-LDv1 Summary:")
                 logger.info(f"  Volumes processed: {len(ocrv1_stats_df)}")
-                logger.info(f"  Total pages: {ocrv1_stats_df['total_records'].sum():,.0f}")
+                if 'total_records' in ocrv1_stats_df.columns:
+                    logger.info(f"  Total pages: {ocrv1_stats_df['total_records'].sum():,.0f}")
                 if 'mean_perplexity' in ocrv1_stats_df.columns:
                     import numpy as np
                     valid_perp = ocrv1_stats_df['mean_perplexity'].replace([np.inf, -np.inf], np.nan).dropna()

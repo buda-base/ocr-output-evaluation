@@ -172,22 +172,29 @@ def compute_ocrv1_stats(df: pd.DataFrame) -> Dict[str, Any]:
     Compute statistics for OCRv1-WS-LDv1 format
     
     Args:
-        df: DataFrame with OCRv1 schema (texts field is list of strings)
+        df: DataFrame with OCRv1 schema (line_texts field is list of strings)
     
     Returns:
         Dictionary with computed statistics
     """
-    # For OCRv1, we need to concatenate the texts field (list of strings)
-    # to get the full page text
-    if 'texts' in df.columns:
-        # Convert list of strings to single text per page
-        df = df.copy()
-        df['text'] = df['texts'].apply(lambda x: '\n'.join(x) if isinstance(x, list) else '')
-    
-    # Now compute stats similar to Google Vision (as structure is similar)
     stats = {}
     
+    # Log what columns we actually have
+    logger.debug(f"OCRv1 DataFrame columns: {df.columns.tolist()}")
+    logger.debug(f"OCRv1 DataFrame shape: {df.shape}")
+    
+    # For OCRv1, the field is called 'line_texts' (not 'texts')
+    # It's a list of strings - one per line - that should be concatenated
+    if 'line_texts' in df.columns:
+        # Convert list of strings to single text per page
+        df = df.copy()
+        df['text'] = df['line_texts'].apply(lambda x: '\n'.join(x) if isinstance(x, list) else '')
+        logger.debug(f"Created 'text' column from 'line_texts' field")
+    else:
+        logger.warning(f"OCRv1 DataFrame missing 'line_texts' column. Columns: {df.columns.tolist()}")
+    
     if df.empty or 'text' not in df.columns:
+        logger.warning(f"OCRv1: Empty DataFrame or missing 'text' column. Returning empty stats.")
         return stats
     
     # Compute perplexity statistics if text is available
