@@ -8,12 +8,77 @@ import numpy as np
 from typing import Optional, Tuple
 from huggingface_hub import hf_hub_download
 import logging
+import re
 
 logger = logging.getLogger(__name__)
 
 # Global models cache - loaded once per process
 _kenlm_model = None
 _sp_model = None
+
+# Lazy import botok to avoid loading if not installed
+_botok_loaded = False
+_normalize_unicode = None
+_normalize_graphical = None
+
+
+def _load_botok():
+    """Lazy load botok normalization functions"""
+    global _botok_loaded, _normalize_unicode, _normalize_graphical
+    
+    if _botok_loaded:
+        return
+    
+    try:
+        from botok import normalize_unicode
+        from botok.utils.lenient_normalization import normalize_graphical
+        _normalize_unicode = normalize_unicode
+        _normalize_graphical = normalize_graphical
+        _botok_loaded = True
+        logger.info("Botok normalization loaded successfully")
+    except ImportError as e:
+        logger.warning(f"Could not import botok: {e}. Install with: pip install botok")
+        _botok_loaded = False
+
+
+def preprocess_text_for_perplexity(text: str) -> str:
+    """
+    Preprocess text before perplexity calculation:
+    1. Apply Unicode normalization (botok)
+    2. Apply graphical normalization (botok)
+    3. Keep only Tibetan characters and ASCII spaces
+    
+    Args:
+        text: Raw input text
+    
+    Returns:
+        Preprocessed text with only Tibetan content
+    """
+    if not text or not text.strip():
+        return ""
+    
+    # Load botok if available
+    _load_botok()
+    
+    # Apply botok normalization if available
+    if _normalize_unicode and _normalize_graphical:
+        text = _normalize_graphical(_normalize_unicode(text))
+    
+    # Keep only Tibetan Unicode characters (U+0F00 to U+0FFF) and ASCII space (U+0020)
+    # Tibetan Unicode block includes:
+    # - Tibetan letters, vowels, marks
+    # - Tibetan digits
+    # - Tibetan punctuation
+    tibetan_pattern = r'[\u0F00-\u0FFF\u0020]+'
+    
+    # Extract all Tibetan segments
+    tibetan_segments = re.findall(tibetan_pattern, text)
+    
+    # Join with spaces and clean up multiple spaces
+    cleaned_text = ' '.join(tibetan_segments)
+    cleaned_text = re.sub(r'\s+', ' ', cleaned_text).strip()
+    
+    return cleaned_text
 
 
 def load_models(local_files_only: bool = False) -> Tuple[kenlm.Model, spm.SentencePieceProcessor]:
@@ -74,6 +139,8 @@ def calculate_perplexity(text: str, kenlm_model: kenlm.Model, sp_model: spm.Sent
     """
     Calculate perplexity of text using KenLM and SentencePiece.
     
+    Text is preprocessed to keep only Tibetan characters before scoring.
+    
     Perplexity is computed as: 10^(-log10_score / token_count)
     Lower perplexity indicates better quality text.
     
@@ -85,6 +152,12 @@ def calculate_perplexity(text: str, kenlm_model: kenlm.Model, sp_model: spm.Sent
     Returns:
         Perplexity score (float), or inf if text is empty/invalid
     """
+    if not text or not text.strip():
+        return float('inf')
+    
+    # Preprocess: normalize and keep only Tibetan text
+    text = preprocess_text_for_perplexity(text)
+    
     if not text or not text.strip():
         return float('inf')
     

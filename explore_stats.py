@@ -13,13 +13,34 @@ def connect_to_stats(output_dir: str = 'output'):
     gb_path = Path(output_dir) / 'google_books_stats.parquet'
     gv_path = Path(output_dir) / 'google_vision_stats.parquet'
     
+    has_perplexity = False
+    
     if gb_path.exists():
         con.execute(f"CREATE VIEW google_books AS SELECT * FROM '{gb_path}'")
         print(f"✓ Loaded Google Books stats: {gb_path}")
+        # Check if perplexity data is available
+        try:
+            result = con.execute("SELECT mean_perplexity FROM google_books LIMIT 1").fetchone()
+            if result is not None:
+                has_perplexity = True
+        except:
+            pass
     
     if gv_path.exists():
         con.execute(f"CREATE VIEW google_vision AS SELECT * FROM '{gv_path}'")
         print(f"✓ Loaded Google Vision stats: {gv_path}")
+        if not has_perplexity:
+            try:
+                result = con.execute("SELECT mean_perplexity FROM google_vision LIMIT 1").fetchone()
+                if result is not None:
+                    has_perplexity = True
+            except:
+                pass
+    
+    if has_perplexity:
+        print(f"  ✓ Perplexity data available")
+    else:
+        print(f"  ℹ No perplexity data (disabled during analysis)")
     
     return con
 
@@ -32,17 +53,41 @@ def print_summary(con: duckdb.DuckDBPyConnection):
     
     # Google Books summary
     try:
-        result = con.execute("""
-            SELECT 
-                COUNT(*) as num_volumes,
-                SUM(total_pages) as total_pages,
-                AVG(mean_confidence) as avg_mean_confidence,
-                AVG(median_confidence) as avg_median_confidence,
-                AVG(pct_high_conf) as avg_pct_high_conf,
-                AVG(pct_medium_conf) as avg_pct_medium_conf,
-                AVG(pct_low_conf) as avg_pct_low_conf
-            FROM google_books
-        """).fetchone()
+        # Check if perplexity columns exist
+        has_perplexity = False
+        try:
+            con.execute("SELECT mean_perplexity FROM google_books LIMIT 1")
+            has_perplexity = True
+        except:
+            pass
+        
+        if has_perplexity:
+            result = con.execute("""
+                SELECT 
+                    COUNT(*) as num_volumes,
+                    SUM(total_pages) as total_pages,
+                    AVG(mean_confidence) as avg_mean_confidence,
+                    AVG(median_confidence) as avg_median_confidence,
+                    AVG(pct_high_conf) as avg_pct_high_conf,
+                    AVG(pct_medium_conf) as avg_pct_medium_conf,
+                    AVG(pct_low_conf) as avg_pct_low_conf,
+                    AVG(CASE WHEN mean_perplexity != 'inf' THEN mean_perplexity ELSE NULL END) as avg_mean_perplexity,
+                    AVG(CASE WHEN median_perplexity != 'inf' THEN median_perplexity ELSE NULL END) as avg_median_perplexity,
+                    SUM(CASE WHEN mean_perplexity = 'inf' THEN 1 ELSE 0 END) as inf_perplexity_count
+                FROM google_books
+            """).fetchone()
+        else:
+            result = con.execute("""
+                SELECT 
+                    COUNT(*) as num_volumes,
+                    SUM(total_pages) as total_pages,
+                    AVG(mean_confidence) as avg_mean_confidence,
+                    AVG(median_confidence) as avg_median_confidence,
+                    AVG(pct_high_conf) as avg_pct_high_conf,
+                    AVG(pct_medium_conf) as avg_pct_medium_conf,
+                    AVG(pct_low_conf) as avg_pct_low_conf
+                FROM google_books
+            """).fetchone()
         
         print("\nGoogle Books:")
         print(f"  Volumes: {result[0]:,}")
@@ -52,22 +97,52 @@ def print_summary(con: duckdb.DuckDBPyConnection):
         print(f"  Avg % high confidence (>=90%): {result[4]:.1f}%")
         print(f"  Avg % medium confidence (70-90%): {result[5]:.1f}%")
         print(f"  Avg % low confidence (<70%): {result[6]:.1f}%")
-    except:
-        print("\nGoogle Books: No data available")
+        
+        if has_perplexity:
+            print(f"  Avg mean perplexity: {result[7]:.2f}")
+            print(f"  Avg median perplexity: {result[8]:.2f}")
+            if result[9] > 0:
+                print(f"  Volumes with infinite perplexity: {result[9]:,}")
+    except Exception as e:
+        print(f"\nGoogle Books: No data available ({e})")
     
     # Google Vision summary
     try:
-        result = con.execute("""
-            SELECT 
-                COUNT(*) as num_volumes,
-                SUM(total_records) as total_pages,
-                AVG(mean_confidence) as avg_mean_confidence,
-                AVG(median_confidence) as avg_median_confidence,
-                AVG(pct_high_conf) as avg_pct_high_conf,
-                AVG(pct_medium_conf) as avg_pct_medium_conf,
-                AVG(pct_low_conf) as avg_pct_low_conf
-            FROM google_vision
-        """).fetchone()
+        # Check if perplexity columns exist
+        has_perplexity = False
+        try:
+            con.execute("SELECT mean_perplexity FROM google_vision LIMIT 1")
+            has_perplexity = True
+        except:
+            pass
+        
+        if has_perplexity:
+            result = con.execute("""
+                SELECT 
+                    COUNT(*) as num_volumes,
+                    SUM(total_records) as total_pages,
+                    AVG(mean_confidence) as avg_mean_confidence,
+                    AVG(median_confidence) as avg_median_confidence,
+                    AVG(pct_high_conf) as avg_pct_high_conf,
+                    AVG(pct_medium_conf) as avg_pct_medium_conf,
+                    AVG(pct_low_conf) as avg_pct_low_conf,
+                    AVG(CASE WHEN mean_perplexity != 'inf' THEN mean_perplexity ELSE NULL END) as avg_mean_perplexity,
+                    AVG(CASE WHEN median_perplexity != 'inf' THEN median_perplexity ELSE NULL END) as avg_median_perplexity,
+                    SUM(CASE WHEN mean_perplexity = 'inf' THEN 1 ELSE 0 END) as inf_perplexity_count
+                FROM google_vision
+            """).fetchone()
+        else:
+            result = con.execute("""
+                SELECT 
+                    COUNT(*) as num_volumes,
+                    SUM(total_records) as total_pages,
+                    AVG(mean_confidence) as avg_mean_confidence,
+                    AVG(median_confidence) as avg_median_confidence,
+                    AVG(pct_high_conf) as avg_pct_high_conf,
+                    AVG(pct_medium_conf) as avg_pct_medium_conf,
+                    AVG(pct_low_conf) as avg_pct_low_conf
+                FROM google_vision
+            """).fetchone()
         
         print("\nGoogle Vision:")
         print(f"  Volumes: {result[0]:,}")
@@ -77,8 +152,14 @@ def print_summary(con: duckdb.DuckDBPyConnection):
         print(f"  Avg % high confidence (>=90%): {result[4]:.1f}%")
         print(f"  Avg % medium confidence (70-90%): {result[5]:.1f}%")
         print(f"  Avg % low confidence (<70%): {result[6]:.1f}%")
-    except:
-        print("\nGoogle Vision: No data available")
+        
+        if has_perplexity:
+            print(f"  Avg mean perplexity: {result[7]:.2f}")
+            print(f"  Avg median perplexity: {result[8]:.2f}")
+            if result[9] > 0:
+                print(f"  Volumes with infinite perplexity: {result[9]:,}")
+    except Exception as e:
+        print(f"\nGoogle Vision: No data available ({e})")
 
 
 def print_low_confidence_volumes(con: duckdb.DuckDBPyConnection, limit: int = 20):
@@ -89,13 +170,30 @@ def print_low_confidence_volumes(con: duckdb.DuckDBPyConnection, limit: int = 20
     
     # Google Books
     try:
-        result = con.execute(f"""
-            SELECT w_id, i_id, i_version, mean_confidence, median_confidence, 
-                   pct_low_conf, total_pages
-            FROM google_books
-            ORDER BY mean_confidence ASC
-            LIMIT {limit}
-        """).fetchdf()
+        # Check if perplexity columns exist
+        has_perplexity = False
+        try:
+            con.execute("SELECT mean_perplexity FROM google_books LIMIT 1")
+            has_perplexity = True
+        except:
+            pass
+        
+        if has_perplexity:
+            result = con.execute(f"""
+                SELECT w_id, i_id, i_version, mean_confidence, median_confidence, 
+                       mean_perplexity, pct_low_conf, total_pages
+                FROM google_books
+                ORDER BY mean_confidence ASC
+                LIMIT {limit}
+            """).fetchdf()
+        else:
+            result = con.execute(f"""
+                SELECT w_id, i_id, i_version, mean_confidence, median_confidence, 
+                       pct_low_conf, total_pages
+                FROM google_books
+                ORDER BY mean_confidence ASC
+                LIMIT {limit}
+            """).fetchdf()
         
         print("\nGoogle Books (lowest mean confidence):")
         print(result.to_string(index=False))
@@ -104,18 +202,160 @@ def print_low_confidence_volumes(con: duckdb.DuckDBPyConnection, limit: int = 20
     
     # Google Vision
     try:
-        result = con.execute(f"""
-            SELECT w_id, i_id, i_version, mean_confidence, median_confidence, 
-                   pct_low_conf, total_records as total_pages
-            FROM google_vision
-            ORDER BY mean_confidence ASC
-            LIMIT {limit}
-        """).fetchdf()
+        # Check if perplexity columns exist
+        has_perplexity = False
+        try:
+            con.execute("SELECT mean_perplexity FROM google_vision LIMIT 1")
+            has_perplexity = True
+        except:
+            pass
+        
+        if has_perplexity:
+            result = con.execute(f"""
+                SELECT w_id, i_id, i_version, mean_confidence, median_confidence, 
+                       mean_perplexity, pct_low_conf, total_records as total_pages
+                FROM google_vision
+                ORDER BY mean_confidence ASC
+                LIMIT {limit}
+            """).fetchdf()
+        else:
+            result = con.execute(f"""
+                SELECT w_id, i_id, i_version, mean_confidence, median_confidence, 
+                       pct_low_conf, total_records as total_pages
+                FROM google_vision
+                ORDER BY mean_confidence ASC
+                LIMIT {limit}
+            """).fetchdf()
         
         print("\nGoogle Vision (lowest mean confidence):")
         print(result.to_string(index=False))
     except:
         print("\nGoogle Vision: No data available")
+
+
+def print_high_perplexity_volumes(con: duckdb.DuckDBPyConnection, limit: int = 20):
+    """Print volumes with highest perplexity (poorest quality text)"""
+    print("\n" + "="*80)
+    print(f"TOP {limit} VOLUMES WITH HIGHEST PERPLEXITY (POOREST TEXT QUALITY)")
+    print("="*80)
+    
+    # Google Books
+    try:
+        result = con.execute(f"""
+            SELECT w_id, i_id, i_version, mean_confidence, mean_perplexity, 
+                   median_perplexity, total_pages
+            FROM google_books
+            WHERE mean_perplexity != 'inf'
+            ORDER BY mean_perplexity DESC
+            LIMIT {limit}
+        """).fetchdf()
+        
+        print("\nGoogle Books (highest perplexity):")
+        print(result.to_string(index=False))
+    except Exception as e:
+        print(f"\nGoogle Books: No perplexity data available")
+    
+    # Google Vision
+    try:
+        result = con.execute(f"""
+            SELECT w_id, i_id, i_version, mean_confidence, mean_perplexity, 
+                   median_perplexity, total_records as total_pages
+            FROM google_vision
+            WHERE mean_perplexity != 'inf'
+            ORDER BY mean_perplexity DESC
+            LIMIT {limit}
+        """).fetchdf()
+        
+        print("\nGoogle Vision (highest perplexity):")
+        print(result.to_string(index=False))
+    except Exception as e:
+        print(f"\nGoogle Vision: No perplexity data available")
+
+
+def print_quality_matrix(con: duckdb.DuckDBPyConnection):
+    """Print quality matrix showing confidence vs perplexity distribution"""
+    print("\n" + "="*80)
+    print("QUALITY MATRIX (Confidence vs Perplexity - Percentile Based)")
+    print("="*80)
+    print("\nNote: Perplexity thresholds are dataset-relative (P33 = best third, P66 = worst third)")
+    
+    # Google Books
+    try:
+        # First get percentiles
+        percentiles = con.execute("""
+            SELECT 
+                PERCENTILE_CONT(0.33) WITHIN GROUP (ORDER BY mean_perplexity) as p33,
+                PERCENTILE_CONT(0.66) WITHIN GROUP (ORDER BY mean_perplexity) as p66
+            FROM google_books
+            WHERE mean_perplexity != 'inf'
+        """).fetchone()
+        
+        p33, p66 = percentiles[0], percentiles[1]
+        
+        result = con.execute(f"""
+            SELECT 
+                CASE 
+                    WHEN mean_confidence >= 0.9 THEN 'High Conf (≥0.9)'
+                    WHEN mean_confidence >= 0.7 THEN 'Med Conf (0.7-0.9)'
+                    ELSE 'Low Conf (<0.7)'
+                END as confidence_category,
+                CASE 
+                    WHEN mean_perplexity = 'inf' THEN 'Invalid (inf)'
+                    WHEN mean_perplexity > {p66} THEN 'Poor (>P66={p66:.0f})'
+                    WHEN mean_perplexity > {p33} THEN 'Medium (P33-P66)'
+                    ELSE 'Good (<P33={p33:.0f})'
+                END as perplexity_category,
+                COUNT(*) as volume_count,
+                ROUND(AVG(mean_confidence), 3) as avg_confidence,
+                ROUND(AVG(CASE WHEN mean_perplexity != 'inf' THEN mean_perplexity ELSE NULL END), 2) as avg_perplexity
+            FROM google_books
+            GROUP BY confidence_category, perplexity_category
+            ORDER BY confidence_category DESC, perplexity_category
+        """).fetchdf()
+        
+        print(f"\nGoogle Books (P33={p33:.0f}, P66={p66:.0f}):")
+        print(result.to_string(index=False))
+    except Exception as e:
+        print(f"\nGoogle Books: No perplexity data available")
+    
+    # Google Vision
+    try:
+        # First get percentiles
+        percentiles = con.execute("""
+            SELECT 
+                PERCENTILE_CONT(0.33) WITHIN GROUP (ORDER BY mean_perplexity) as p33,
+                PERCENTILE_CONT(0.66) WITHIN GROUP (ORDER BY mean_perplexity) as p66
+            FROM google_vision
+            WHERE mean_perplexity != 'inf'
+        """).fetchone()
+        
+        p33, p66 = percentiles[0], percentiles[1]
+        
+        result = con.execute(f"""
+            SELECT 
+                CASE 
+                    WHEN mean_confidence >= 0.9 THEN 'High Conf (≥0.9)'
+                    WHEN mean_confidence >= 0.7 THEN 'Med Conf (0.7-0.9)'
+                    ELSE 'Low Conf (<0.7)'
+                END as confidence_category,
+                CASE 
+                    WHEN mean_perplexity = 'inf' THEN 'Invalid (inf)'
+                    WHEN mean_perplexity > {p66} THEN 'Poor (>P66={p66:.0f})'
+                    WHEN mean_perplexity > {p33} THEN 'Medium (P33-P66)'
+                    ELSE 'Good (<P33={p33:.0f})'
+                END as perplexity_category,
+                COUNT(*) as volume_count,
+                ROUND(AVG(mean_confidence), 3) as avg_confidence,
+                ROUND(AVG(CASE WHEN mean_perplexity != 'inf' THEN mean_perplexity ELSE NULL END), 2) as avg_perplexity
+            FROM google_vision
+            GROUP BY confidence_category, perplexity_category
+            ORDER BY confidence_category DESC, perplexity_category
+        """).fetchdf()
+        
+        print(f"\nGoogle Vision (P33={p33:.0f}, P66={p66:.0f}):")
+        print(result.to_string(index=False))
+    except Exception as e:
+        print(f"\nGoogle Vision: No perplexity data available")
 
 
 def run_custom_query(con: duckdb.DuckDBPyConnection, query: str):
@@ -140,6 +380,7 @@ def interactive_mode(con: duckdb.DuckDBPyConnection):
     print("\nAvailable tables: google_books, google_vision")
     print("Type 'exit' or 'quit' to exit")
     print("Type 'schema' to see table schemas")
+    print("Type 'examples' to see example queries")
     print()
     
     while True:
@@ -154,6 +395,30 @@ def interactive_mode(con: duckdb.DuckDBPyConnection):
                 print(con.execute("DESCRIBE google_books").fetchdf().to_string(index=False))
                 print("\nGoogle Vision schema:")
                 print(con.execute("DESCRIBE google_vision").fetchdf().to_string(index=False))
+                continue
+            
+            if query.lower() == 'examples':
+                print("\nExample queries:")
+                print("\n1. Find best quality volumes:")
+                print("   SELECT w_id, i_id, mean_confidence, mean_perplexity")
+                print("   FROM google_books")
+                print("   WHERE mean_confidence > 0.9 AND mean_perplexity < 100")
+                print("   ORDER BY mean_perplexity ASC LIMIT 20;")
+                print("\n2. Confidence vs perplexity correlation:")
+                print("   SELECT")
+                print("     ROUND(mean_confidence, 1) as conf_bucket,")
+                print("     AVG(mean_perplexity) as avg_ppl,")
+                print("     COUNT(*) as count")
+                print("   FROM google_books")
+                print("   WHERE mean_perplexity != 'inf'")
+                print("   GROUP BY conf_bucket")
+                print("   ORDER BY conf_bucket DESC;")
+                print("\n3. Find anomalies (high conf, high perplexity):")
+                print("   SELECT w_id, i_id, mean_confidence, mean_perplexity")
+                print("   FROM google_books")
+                print("   WHERE mean_confidence > 0.9 AND mean_perplexity > 500")
+                print("   ORDER BY mean_perplexity DESC;")
+                print()
                 continue
             
             if not query:
@@ -171,13 +436,17 @@ def interactive_mode(con: duckdb.DuckDBPyConnection):
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Explore OCR confidence statistics')
+    parser = argparse.ArgumentParser(description='Explore OCR confidence and perplexity statistics')
     parser.add_argument('--output-dir', type=str, default='output',
                        help='Output directory containing stats files')
     parser.add_argument('--summary', action='store_true',
                        help='Print summary statistics')
     parser.add_argument('--low-confidence', type=int, metavar='N',
                        help='Show top N volumes with lowest confidence')
+    parser.add_argument('--high-perplexity', type=int, metavar='N',
+                       help='Show top N volumes with highest perplexity (poorest quality)')
+    parser.add_argument('--quality-matrix', action='store_true',
+                       help='Show quality matrix (confidence vs perplexity distribution)')
     parser.add_argument('--query', type=str,
                        help='Run a custom SQL query')
     parser.add_argument('--interactive', action='store_true',
@@ -189,7 +458,8 @@ def main():
     con = connect_to_stats(args.output_dir)
     
     # If no arguments, show summary by default
-    if not any([args.summary, args.low_confidence, args.query, args.interactive]):
+    if not any([args.summary, args.low_confidence, args.high_perplexity, 
+                args.quality_matrix, args.query, args.interactive]):
         args.summary = True
     
     if args.summary:
@@ -197,6 +467,12 @@ def main():
     
     if args.low_confidence:
         print_low_confidence_volumes(con, args.low_confidence)
+    
+    if args.high_perplexity:
+        print_high_perplexity_volumes(con, args.high_perplexity)
+    
+    if args.quality_matrix:
+        print_quality_matrix(con)
     
     if args.query:
         run_custom_query(con, args.query)

@@ -233,6 +233,192 @@ def plot_percentile_ranges(stats_df: pd.DataFrame,
     plt.close()
 
 
+def plot_perplexity_distribution(stats_df: pd.DataFrame,
+                                  ocr_type: str = 'Google Books',
+                                  save_path: str = None):
+    """
+    Plot histogram of mean perplexity across volumes (log scale)
+    """
+    if 'mean_perplexity' not in stats_df.columns:
+        print(f"Warning: No perplexity data available for {ocr_type}")
+        return
+    
+    fig, ax = plt.subplots(figsize=(10, 6))
+    
+    # Filter out invalid values (NaN, inf)
+    valid_data = stats_df['mean_perplexity'].replace([np.inf, -np.inf], np.nan).dropna()
+    
+    if len(valid_data) == 0:
+        print(f"Warning: No valid perplexity data for {ocr_type}")
+        plt.close()
+        return
+    
+    # Calculate percentile-based thresholds
+    p33 = valid_data.quantile(0.33)
+    p66 = valid_data.quantile(0.66)
+    
+    # Use log scale for perplexity
+    ax.hist(np.log10(valid_data), bins=50, alpha=0.7, edgecolor='black', color='purple')
+    
+    # Add percentile threshold lines (relative to dataset)
+    ax.axvline(np.log10(p33), color='green', linestyle='--', 
+               label=f'P33 (best third) = {p33:.0f}', linewidth=2)
+    ax.axvline(np.log10(p66), color='red', linestyle='--', 
+               label=f'P66 (worst third) = {p66:.0f}', linewidth=2)
+    
+    ax.set_xlabel('Perplexity (log10 scale)')
+    ax.set_ylabel('Number of Volumes')
+    ax.set_title(f'{ocr_type} - Distribution of Mean Perplexity Across Volumes\n' + 
+                f'(n={len(valid_data)} volumes, median={valid_data.median():.0f})')
+    ax.legend()
+    ax.grid(True, alpha=0.3)
+    
+    # Add second x-axis with actual values
+    ax2 = ax.twiny()
+    ax2.set_xlim(ax.get_xlim())
+    # Use actual percentiles for tick labels
+    tick_locs = [np.log10(valid_data.min()), np.log10(valid_data.quantile(0.5)), np.log10(valid_data.max())]
+    tick_labels = [f'{valid_data.min():.0f}', f'{valid_data.median():.0f}', f'{valid_data.max():.0f}']
+    ax2.set_xticks(tick_locs)
+    ax2.set_xticklabels(tick_labels)
+    ax2.set_xlabel('Perplexity (actual value)')
+    
+    plt.tight_layout()
+    
+    if save_path:
+        plt.savefig(save_path, dpi=300, bbox_inches='tight')
+        print(f"Saved: {save_path}")
+    else:
+        plt.show()
+    
+    plt.close()
+
+
+def plot_confidence_vs_perplexity(stats_df: pd.DataFrame,
+                                   ocr_type: str = 'Google Books',
+                                   save_path: str = None):
+    """
+    Scatter plot of confidence vs perplexity
+    """
+    if 'mean_perplexity' not in stats_df.columns:
+        print(f"Warning: No perplexity data available for {ocr_type}")
+        return
+    
+    fig, ax = plt.subplots(figsize=(10, 6))
+    
+    # Filter out invalid values
+    plot_df = stats_df[['mean_confidence', 'mean_perplexity']].copy()
+    plot_df = plot_df.replace([np.inf, -np.inf], np.nan).dropna()
+    
+    if len(plot_df) == 0:
+        print(f"Warning: No valid data for {ocr_type} confidence vs perplexity plot")
+        plt.close()
+        return
+    
+    # Calculate percentile thresholds
+    p33 = plot_df['mean_perplexity'].quantile(0.33)
+    p66 = plot_df['mean_perplexity'].quantile(0.66)
+    
+    # Plot with log scale on y-axis
+    scatter = ax.scatter(plot_df['mean_confidence'], plot_df['mean_perplexity'],
+                        alpha=0.5, s=20, c=plot_df['mean_perplexity'],
+                        cmap='RdYlGn_r', norm=plt.matplotlib.colors.LogNorm())
+    
+    # Add percentile threshold lines (dataset-relative)
+    ax.axhline(p33, color='green', linestyle='--', alpha=0.5, 
+               label=f'P33 (best) = {p33:.0f}')
+    ax.axhline(p66, color='red', linestyle='--', alpha=0.5, 
+               label=f'P66 (worst) = {p66:.0f}')
+    ax.axvline(0.7, color='orange', linestyle='--', alpha=0.3)
+    ax.axvline(0.9, color='blue', linestyle='--', alpha=0.3)
+    
+    ax.set_xlabel('Mean Confidence')
+    ax.set_ylabel('Mean Perplexity (log scale)')
+    ax.set_yscale('log')
+    ax.set_title(f'{ocr_type} - Confidence vs Perplexity (n={len(plot_df)})\n' +
+                f'Thresholds are dataset-relative (P33={p33:.0f}, P66={p66:.0f})')
+    ax.legend()
+    ax.grid(True, alpha=0.3)
+    
+    cbar = plt.colorbar(scatter, ax=ax)
+    cbar.set_label('Mean Perplexity')
+    
+    plt.tight_layout()
+    
+    if save_path:
+        plt.savefig(save_path, dpi=300, bbox_inches='tight')
+        print(f"Saved: {save_path}")
+    else:
+        plt.show()
+    
+    plt.close()
+
+
+def plot_perplexity_percentiles(stats_df: pd.DataFrame,
+                                 ocr_type: str = 'Google Books',
+                                 save_path: str = None):
+    """
+    Box plot showing perplexity percentile ranges
+    """
+    if 'mean_perplexity' not in stats_df.columns:
+        print(f"Warning: No perplexity data available for {ocr_type}")
+        return
+    
+    fig, ax = plt.subplots(figsize=(10, 6))
+    
+    # Prepare data for box plot, filtering out invalid values
+    data = [
+        stats_df['p10_perplexity'].replace([np.inf, -np.inf], np.nan).dropna(),
+        stats_df['p25_perplexity'].replace([np.inf, -np.inf], np.nan).dropna(),
+        stats_df['median_perplexity'].replace([np.inf, -np.inf], np.nan).dropna(),
+        stats_df['p75_perplexity'].replace([np.inf, -np.inf], np.nan).dropna(),
+        stats_df['p90_perplexity'].replace([np.inf, -np.inf], np.nan).dropna()
+    ]
+    
+    # Check if we have any valid data
+    if all(len(d) == 0 for d in data):
+        print(f"Warning: No valid perplexity data for {ocr_type} percentile plot")
+        plt.close()
+        return
+    
+    # Calculate overall dataset percentiles for reference lines
+    all_perp = stats_df['mean_perplexity'].replace([np.inf, -np.inf], np.nan).dropna()
+    p33_overall = all_perp.quantile(0.33)
+    p66_overall = all_perp.quantile(0.66)
+    
+    positions = [10, 25, 50, 75, 90]
+    
+    bp = ax.boxplot(data, positions=positions, widths=8, patch_artist=True,
+                    boxprops=dict(facecolor='plum', alpha=0.7),
+                    medianprops=dict(color='red', linewidth=2))
+    
+    # Add percentile reference lines
+    ax.axhline(p33_overall, color='green', linestyle='--', alpha=0.3, 
+               label=f'Dataset P33 = {p33_overall:.0f}')
+    ax.axhline(p66_overall, color='red', linestyle='--', alpha=0.3, 
+               label=f'Dataset P66 = {p66_overall:.0f}')
+    
+    ax.set_xlabel('Percentile')
+    ax.set_ylabel('Perplexity (log scale)')
+    ax.set_yscale('log')
+    ax.set_title(f'{ocr_type} - Perplexity Distribution Across Percentiles\n' +
+                f'Dataset median = {all_perp.median():.0f}')
+    ax.set_xticks(positions)
+    ax.set_xticklabels(['P10', 'P25', 'P50', 'P75', 'P90'])
+    ax.legend()
+    ax.grid(True, alpha=0.3, axis='y')
+    
+    plt.tight_layout()
+    
+    if save_path:
+        plt.savefig(save_path, dpi=300, bbox_inches='tight')
+        print(f"Saved: {save_path}")
+    else:
+        plt.show()
+    
+    plt.close()
+
+
 def generate_all_plots(output_dir: str = 'output', 
                       plots_dir: str = 'plots'):
     """
@@ -254,10 +440,20 @@ def generate_all_plots(output_dir: str = 'output',
     if gb_path.exists():
         gb_df = pd.read_parquet(gb_path)
         print(f"Loaded Google Books: {len(gb_df)} volumes")
+        has_perplexity_gb = 'mean_perplexity' in gb_df.columns
+        if has_perplexity_gb:
+            print(f"  ✓ Perplexity data available")
+        else:
+            print(f"  ℹ No perplexity data (disabled during analysis)")
     
     if gv_path.exists():
         gv_df = pd.read_parquet(gv_path)
         print(f"Loaded Google Vision: {len(gv_df)} volumes")
+        has_perplexity_gv = 'mean_perplexity' in gv_df.columns
+        if has_perplexity_gv:
+            print(f"  ✓ Perplexity data available")
+        else:
+            print(f"  ℹ No perplexity data (disabled during analysis)")
     
     # Generate plots
     if gb_df is not None:
@@ -270,6 +466,16 @@ def generate_all_plots(output_dir: str = 'output',
                                 plots_path / 'gb_confidence_vs_pages.png')
         plot_percentile_ranges(gb_df, 'Google Books',
                               plots_path / 'gb_percentile_ranges.png')
+        
+        # Perplexity plots
+        if 'mean_perplexity' in gb_df.columns:
+            print("  Generating perplexity plots...")
+            plot_perplexity_distribution(gb_df, 'Google Books',
+                                        plots_path / 'gb_perplexity_dist.png')
+            plot_confidence_vs_perplexity(gb_df, 'Google Books',
+                                         plots_path / 'gb_confidence_vs_perplexity.png')
+            plot_perplexity_percentiles(gb_df, 'Google Books',
+                                       plots_path / 'gb_perplexity_percentiles.png')
     
     if gv_df is not None:
         print("\nGenerating Google Vision plots...")
@@ -281,13 +487,28 @@ def generate_all_plots(output_dir: str = 'output',
                                 plots_path / 'gv_confidence_vs_pages.png')
         plot_percentile_ranges(gv_df, 'Google Vision',
                               plots_path / 'gv_percentile_ranges.png')
+        
+        # Perplexity plots
+        if 'mean_perplexity' in gv_df.columns:
+            print("  Generating perplexity plots...")
+            plot_perplexity_distribution(gv_df, 'Google Vision',
+                                        plots_path / 'gv_perplexity_dist.png')
+            plot_confidence_vs_perplexity(gv_df, 'Google Vision',
+                                         plots_path / 'gv_confidence_vs_perplexity.png')
+            plot_perplexity_percentiles(gv_df, 'Google Vision',
+                                       plots_path / 'gv_perplexity_percentiles.png')
     
     if gb_df is not None and gv_df is not None:
         print("\nGenerating comparison plots...")
         plot_confidence_comparison(gb_df, gv_df,
                                   plots_path / 'gb_vs_gv_comparison.png')
     
-    print(f"\nAll plots saved to: {plots_path}")
+    print(f"\n✓ All plots saved to: {plots_path}")
+    print(f"\nGenerated plots:")
+    print(f"  Confidence: distribution, categories, vs pages, percentiles")
+    if (gb_df is not None and 'mean_perplexity' in gb_df.columns) or \
+       (gv_df is not None and 'mean_perplexity' in gv_df.columns):
+        print(f"  Perplexity: distribution, vs confidence, percentiles")
 
 
 if __name__ == '__main__':
