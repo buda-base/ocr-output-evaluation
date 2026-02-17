@@ -15,7 +15,10 @@ _perplexity_models = None
 
 
 def _get_perplexity_scorer():
-    """Lazy load perplexity module and models"""
+    """
+    Lazy load perplexity module and models.
+    Models should already be loaded by worker initializer.
+    """
     global _perplexity_module, _perplexity_models
     
     if not ENABLE_PERPLEXITY:
@@ -25,18 +28,22 @@ def _get_perplexity_scorer():
         try:
             import perplexity_scorer
             _perplexity_module = perplexity_scorer
-            logger.info("Perplexity module loaded successfully")
         except ImportError as e:
             logger.warning(f"Could not import perplexity_scorer: {e}")
             return None, None, None
     
+    # Check if models are already loaded (by worker initializer)
     if _perplexity_models is None:
         try:
-            _perplexity_models = _perplexity_module.load_models()
-            logger.info("Perplexity models loaded successfully")
+            # Try to load with local_files_only first (should already be cached)
+            _perplexity_models = _perplexity_module.load_models(local_files_only=True)
         except Exception as e:
-            logger.error(f"Failed to load perplexity models: {e}")
-            return _perplexity_module, None, None
+            # Fallback: download if needed (first time only)
+            try:
+                _perplexity_models = _perplexity_module.load_models(local_files_only=False)
+            except Exception as e2:
+                logger.error(f"Failed to load perplexity models: {e2}")
+                return _perplexity_module, None, None
     
     kenlm_model, sp_model = _perplexity_models
     return _perplexity_module, kenlm_model, sp_model
@@ -144,7 +151,6 @@ def compute_google_books_stats(df: pd.DataFrame) -> Dict[str, Any]:
         perplexity_module, kenlm_model, sp_model = _get_perplexity_scorer()
         if perplexity_module and kenlm_model and sp_model:
             try:
-                logger.info("Calculating perplexity scores for Google Books volume...")
                 # Calculate perplexity for all pages
                 perplexities = perplexity_module.calculate_perplexity_batch(
                     df['text'].fillna(''), 
@@ -155,7 +161,6 @@ def compute_google_books_stats(df: pd.DataFrame) -> Dict[str, Any]:
                 # Compute perplexity statistics
                 perplexity_stats = perplexity_module.compute_perplexity_stats(perplexities)
                 stats.update(perplexity_stats)
-                logger.info(f"Perplexity stats computed: mean={perplexity_stats['mean_perplexity']:.2f}")
             except Exception as e:
                 logger.error(f"Error calculating perplexity: {e}")
     
@@ -208,7 +213,6 @@ def compute_google_vision_stats(df: pd.DataFrame) -> Dict[str, Any]:
         perplexity_module, kenlm_model, sp_model = _get_perplexity_scorer()
         if perplexity_module and kenlm_model and sp_model:
             try:
-                logger.info("Calculating perplexity scores for Google Vision volume...")
                 # Calculate perplexity for all pages
                 perplexities = perplexity_module.calculate_perplexity_batch(
                     df['text'].fillna(''), 
@@ -219,7 +223,6 @@ def compute_google_vision_stats(df: pd.DataFrame) -> Dict[str, Any]:
                 # Compute perplexity statistics
                 perplexity_stats = perplexity_module.compute_perplexity_stats(perplexities)
                 stats.update(perplexity_stats)
-                logger.info(f"Perplexity stats computed: mean={perplexity_stats['mean_perplexity']:.2f}")
             except Exception as e:
                 logger.error(f"Error calculating perplexity: {e}")
     

@@ -16,10 +16,13 @@ _kenlm_model = None
 _sp_model = None
 
 
-def load_models() -> Tuple[kenlm.Model, spm.SentencePieceProcessor]:
+def load_models(local_files_only: bool = False) -> Tuple[kenlm.Model, spm.SentencePieceProcessor]:
     """
     Load KenLM and SentencePiece models from Hugging Face Hub.
     Models are cached globally to avoid reloading in each process.
+    
+    Args:
+        local_files_only: If True, only use cached files (no HTTP requests)
     
     Returns:
         Tuple of (kenlm_model, sp_model)
@@ -29,16 +32,35 @@ def load_models() -> Tuple[kenlm.Model, spm.SentencePieceProcessor]:
     if _kenlm_model is not None and _sp_model is not None:
         return _kenlm_model, _sp_model
     
-    logger.info("Downloading perplexity models from Hugging Face Hub...")
+    if not local_files_only:
+        logger.info("Downloading perplexity models from Hugging Face Hub (if not cached)...")
     
-    arpa_path = hf_hub_download(
-        repo_id="openpecha/BoKenlm", 
-        filename="lm.arpa"
-    )
-    sp_model_path = hf_hub_download(
-        repo_id="openpecha/BoSentencePiece", 
-        filename="sentencepiece.model"
-    )
+    # Try with local_files_only first if requested, fallback to download if needed
+    try:
+        arpa_path = hf_hub_download(
+            repo_id="openpecha/BoKenlm", 
+            filename="lm.arpa",
+            local_files_only=local_files_only
+        )
+        sp_model_path = hf_hub_download(
+            repo_id="openpecha/BoSentencePiece", 
+            filename="sentencepiece.model",
+            local_files_only=local_files_only
+        )
+    except Exception as e:
+        if local_files_only:
+            # Retry without local_files_only to download
+            logger.info("Models not in cache, downloading from Hugging Face Hub...")
+            arpa_path = hf_hub_download(
+                repo_id="openpecha/BoKenlm", 
+                filename="lm.arpa"
+            )
+            sp_model_path = hf_hub_download(
+                repo_id="openpecha/BoSentencePiece", 
+                filename="sentencepiece.model"
+            )
+        else:
+            raise
     
     logger.info("Loading perplexity models into memory...")
     _kenlm_model = kenlm.Model(arpa_path)

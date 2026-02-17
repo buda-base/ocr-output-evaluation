@@ -7,13 +7,43 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 from typing import Dict, Any, List, Optional
 from tqdm import tqdm
 import logging
+import os
 
-from config import S3_BUCKET, S3_GB_PATH_TEMPLATE, S3_GV_PATH_TEMPLATE
+from config import S3_BUCKET, S3_GB_PATH_TEMPLATE, S3_GV_PATH_TEMPLATE, ENABLE_PERPLEXITY
 from stats_calculator import compute_google_books_stats, compute_google_vision_stats
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
+
+
+def _init_worker_process():
+    """
+    Initialize worker process by pre-loading perplexity models.
+    This is called once per worker process when it starts.
+    """
+    # Check if perplexity is enabled
+    enable_perplexity = os.getenv('ENABLE_PERPLEXITY', 'true').lower() in ('true', '1', 'yes')
+    
+    if not enable_perplexity:
+        return
+    
+    try:
+        # Import and load models once per worker
+        import perplexity_scorer
+        # Load models with local_files_only after first download
+        # This prevents HTTP requests on every call
+        perplexity_scorer.load_models(local_files_only=True)
+        logger.info(f"Worker process {os.getpid()} initialized with perplexity models")
+    except Exception as e:
+        # If local files don't exist yet, try downloading
+        try:
+            import perplexity_scorer
+            perplexity_scorer.load_models(local_files_only=False)
+            logger.info(f"Worker process {os.getpid()} downloaded and initialized perplexity models")
+        except Exception as e2:
+            logger.warning(f"Worker process {os.getpid()} failed to load perplexity models: {e2}")
+            # Continue without perplexity
 
 
 def process_google_books_volume(volume_info: Dict[str, str]) -> Optional[Dict[str, Any]]:
@@ -132,7 +162,8 @@ def process_volumes_parallel(volumes: List[Dict[str, str]],
     """
     results = []
     
-    with ProcessPoolExecutor(max_workers=max_workers) as executor:
+    # Use initializer to load models once per worker process
+    with ProcessPoolExecutor(max_workers=max_workers, initializer=_init_worker_process) as executor:
         # Submit all tasks
         future_to_volume = {
             executor.submit(processor_func, vol): vol 
