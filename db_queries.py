@@ -48,26 +48,30 @@ def get_volumes_for_job(job_name: str) -> List[Dict[str, str]]:
         conn.close()
 
 
-def get_all_volumes() -> Tuple[List[Dict[str, str]], List[Dict[str, str]]]:
+def get_all_volumes() -> Tuple[List[Dict[str, str]], List[Dict[str, str]], List[Dict[str, str]]]:
     """
-    Fetch all completed volumes for both Google Books and Google Vision
+    Fetch all completed volumes for Google Books, Google Vision, and OCRv1
     
-    Returns: (gb_volumes, gv_volumes)
+    Returns: (gb_volumes, gv_volumes, ocrv1_volumes)
     """
     gb_volumes = get_volumes_for_job('google_books')
     gv_volumes = get_volumes_for_job('google_vision')
+    ocrv1_volumes = get_volumes_for_job('ocrv1-ws-ldv1')
     
-    return gb_volumes, gv_volumes
+    return gb_volumes, gv_volumes, ocrv1_volumes
 
 
 if __name__ == '__main__':
     # Test the database connection
     print("Testing database connection...")
-    gb_vols, gv_vols = get_all_volumes()
+    gb_vols, gv_vols, ocrv1_vols = get_all_volumes()
     print(f"Found {len(gb_vols)} Google Books volumes")
     print(f"Found {len(gv_vols)} Google Vision volumes")
+    print(f"Found {len(ocrv1_vols)} OCRv1-WS-LDv1 volumes")
     
     if gb_vols:
         print(f"\nSample Google Books volume: {gb_vols[0]}")
     if gv_vols:
         print(f"Sample Google Vision volume: {gv_vols[0]}")
+    if ocrv1_vols:
+        print(f"Sample OCRv1 volume: {ocrv1_vols[0]}")

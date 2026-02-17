@@ -12,6 +12,7 @@ def connect_to_stats(output_dir: str = 'output'):
     
     gb_path = Path(output_dir) / 'google_books_stats.parquet'
     gv_path = Path(output_dir) / 'google_vision_stats.parquet'
+    ocrv1_path = Path(output_dir) / 'ocrv1_ws_ldv1_stats.parquet'
     
     has_perplexity = False
     
@@ -32,6 +33,17 @@ def connect_to_stats(output_dir: str = 'output'):
         if not has_perplexity:
             try:
                 result = con.execute("SELECT mean_perplexity FROM google_vision LIMIT 1").fetchone()
+                if result is not None:
+                    has_perplexity = True
+            except:
+                pass
+    
+    if ocrv1_path.exists():
+        con.execute(f"CREATE VIEW ocrv1_ws_ldv1 AS SELECT * FROM '{ocrv1_path}'")
+        print(f"✓ Loaded OCRv1-WS-LDv1 stats: {ocrv1_path}")
+        if not has_perplexity:
+            try:
+                result = con.execute("SELECT mean_perplexity FROM ocrv1_ws_ldv1 LIMIT 1").fetchone()
                 if result is not None:
                     has_perplexity = True
             except:
@@ -377,7 +389,7 @@ def interactive_mode(con: duckdb.DuckDBPyConnection):
     print("\n" + "="*80)
     print("INTERACTIVE MODE")
     print("="*80)
-    print("\nAvailable tables: google_books, google_vision")
+    print("\nAvailable tables: google_books, google_vision, ocrv1_ws_ldv1")
     print("Type 'exit' or 'quit' to exit")
     print("Type 'schema' to see table schemas")
     print("Type 'examples' to see example queries")
@@ -391,33 +403,40 @@ def interactive_mode(con: duckdb.DuckDBPyConnection):
                 break
             
             if query.lower() == 'schema':
-                print("\nGoogle Books schema:")
-                print(con.execute("DESCRIBE google_books").fetchdf().to_string(index=False))
-                print("\nGoogle Vision schema:")
-                print(con.execute("DESCRIBE google_vision").fetchdf().to_string(index=False))
+                try:
+                    print("\nGoogle Books schema:")
+                    print(con.execute("DESCRIBE google_books").fetchdf().to_string(index=False))
+                except:
+                    print("  (not loaded)")
+                try:
+                    print("\nGoogle Vision schema:")
+                    print(con.execute("DESCRIBE google_vision").fetchdf().to_string(index=False))
+                except:
+                    print("  (not loaded)")
+                try:
+                    print("\nOCRv1-WS-LDv1 schema:")
+                    print(con.execute("DESCRIBE ocrv1_ws_ldv1").fetchdf().to_string(index=False))
+                except:
+                    print("  (not loaded)")
                 continue
             
             if query.lower() == 'examples':
                 print("\nExample queries:")
-                print("\n1. Find best quality volumes:")
-                print("   SELECT w_id, i_id, mean_confidence, mean_perplexity")
-                print("   FROM google_books")
-                print("   WHERE mean_confidence > 0.9 AND mean_perplexity < 100")
+                print("\n1. Find best quality volumes (OCRv1):")
+                print("   SELECT w_id, i_id, mean_perplexity")
+                print("   FROM ocrv1_ws_ldv1")
                 print("   ORDER BY mean_perplexity ASC LIMIT 20;")
-                print("\n2. Confidence vs perplexity correlation:")
-                print("   SELECT")
-                print("     ROUND(mean_confidence, 1) as conf_bucket,")
-                print("     AVG(mean_perplexity) as avg_ppl,")
-                print("     COUNT(*) as count")
-                print("   FROM google_books")
+                print("\n2. Compare OCR types:")
+                print("   SELECT 'Google Books' as ocr_type, AVG(mean_perplexity) as avg_ppl FROM google_books")
+                print("   UNION ALL")
+                print("   SELECT 'Google Vision', AVG(mean_perplexity) FROM google_vision")
+                print("   UNION ALL")
+                print("   SELECT 'OCRv1-WS-LDv1', AVG(mean_perplexity) FROM ocrv1_ws_ldv1;")
+                print("\n3. Find best OCRv1 volumes:")
+                print("   SELECT w_id, i_id, mean_perplexity, total_records")
+                print("   FROM ocrv1_ws_ldv1")
                 print("   WHERE mean_perplexity != 'inf'")
-                print("   GROUP BY conf_bucket")
-                print("   ORDER BY conf_bucket DESC;")
-                print("\n3. Find anomalies (high conf, high perplexity):")
-                print("   SELECT w_id, i_id, mean_confidence, mean_perplexity")
-                print("   FROM google_books")
-                print("   WHERE mean_confidence > 0.9 AND mean_perplexity > 500")
-                print("   ORDER BY mean_perplexity DESC;")
+                print("   ORDER BY mean_perplexity ASC LIMIT 50;")
                 print()
                 continue
             

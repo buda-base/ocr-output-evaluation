@@ -167,7 +167,62 @@ def compute_google_books_stats(df: pd.DataFrame) -> Dict[str, Any]:
     return stats
 
 
-def compute_google_vision_stats(df: pd.DataFrame) -> Dict[str, Any]:
+def compute_ocrv1_stats(df: pd.DataFrame) -> Dict[str, Any]:
+    """
+    Compute statistics for OCRv1-WS-LDv1 format
+    
+    Args:
+        df: DataFrame with OCRv1 schema (texts field is list of strings)
+    
+    Returns:
+        Dictionary with computed statistics
+    """
+    # For OCRv1, we need to concatenate the texts field (list of strings)
+    # to get the full page text
+    if 'texts' in df.columns:
+        # Convert list of strings to single text per page
+        df = df.copy()
+        df['text'] = df['texts'].apply(lambda x: '\n'.join(x) if isinstance(x, list) else '')
+    
+    # Now compute stats similar to Google Vision (as structure is similar)
+    stats = {}
+    
+    if df.empty or 'text' not in df.columns:
+        return stats
+    
+    # Compute perplexity statistics if text is available
+    if 'text' in df.columns:
+        perplexity_module, kenlm_model, sp_model = _get_perplexity_scorer()
+        if perplexity_module and kenlm_model and sp_model:
+            try:
+                # Calculate perplexity for all pages
+                perplexities = perplexity_module.calculate_perplexity_batch(
+                    df['text'].fillna(''), 
+                    kenlm_model, 
+                    sp_model
+                )
+                
+                # Compute perplexity statistics
+                perplexity_stats = perplexity_module.compute_perplexity_stats(perplexities)
+                stats.update(perplexity_stats)
+            except Exception as e:
+                logger.error(f"Error calculating perplexity: {e}")
+    
+    # Add basic metrics
+    text_lengths = df['text'].str.len().astype('float64') if 'text' in df.columns else pd.Series([])
+    
+    stats.update({
+        'total_records': len(df),
+        'total_text_length': int(text_lengths.sum()) if len(text_lengths) > 0 else 0,
+        'mean_text_length_per_page': float(text_lengths.mean()) if len(text_lengths) > 0 else 0.0,
+    })
+    
+    # Count pages with text
+    if 'text' in df.columns:
+        pages_with_text = (df['text'].str.len() > 0).sum()
+        stats['pages_with_text'] = int(pages_with_text)
+    
+    return stats
     """
     Compute statistics specific to Google Vision format
     

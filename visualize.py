@@ -433,9 +433,11 @@ def generate_all_plots(output_dir: str = 'output',
     # Load data
     gb_path = Path(output_dir) / 'google_books_stats.parquet'
     gv_path = Path(output_dir) / 'google_vision_stats.parquet'
+    ocrv1_path = Path(output_dir) / 'ocrv1_ws_ldv1_stats.parquet'
     
     gb_df = None
     gv_df = None
+    ocrv1_df = None
     
     if gb_path.exists():
         gb_df = pd.read_parquet(gb_path)
@@ -451,6 +453,15 @@ def generate_all_plots(output_dir: str = 'output',
         print(f"Loaded Google Vision: {len(gv_df)} volumes")
         has_perplexity_gv = 'mean_perplexity' in gv_df.columns
         if has_perplexity_gv:
+            print(f"  ✓ Perplexity data available")
+        else:
+            print(f"  ℹ No perplexity data (disabled during analysis)")
+    
+    if ocrv1_path.exists():
+        ocrv1_df = pd.read_parquet(ocrv1_path)
+        print(f"Loaded OCRv1-WS-LDv1: {len(ocrv1_df)} volumes")
+        has_perplexity_ocrv1 = 'mean_perplexity' in ocrv1_df.columns
+        if has_perplexity_ocrv1:
             print(f"  ✓ Perplexity data available")
         else:
             print(f"  ℹ No perplexity data (disabled during analysis)")
@@ -498,6 +509,16 @@ def generate_all_plots(output_dir: str = 'output',
             plot_perplexity_percentiles(gv_df, 'Google Vision',
                                        plots_path / 'gv_perplexity_percentiles.png')
     
+    if ocrv1_df is not None:
+        print("\nGenerating OCRv1-WS-LDv1 plots...")
+        # OCRv1 only has perplexity, no confidence scores
+        if 'mean_perplexity' in ocrv1_df.columns:
+            print("  Generating perplexity plots...")
+            plot_perplexity_distribution(ocrv1_df, 'OCRv1-WS-LDv1',
+                                        plots_path / 'ocrv1_perplexity_dist.png')
+            plot_perplexity_percentiles(ocrv1_df, 'OCRv1-WS-LDv1',
+                                       plots_path / 'ocrv1_perplexity_percentiles.png')
+    
     if gb_df is not None and gv_df is not None:
         print("\nGenerating comparison plots...")
         plot_confidence_comparison(gb_df, gv_df,
@@ -507,8 +528,311 @@ def generate_all_plots(output_dir: str = 'output',
     print(f"\nGenerated plots:")
     print(f"  Confidence: distribution, categories, vs pages, percentiles")
     if (gb_df is not None and 'mean_perplexity' in gb_df.columns) or \
-       (gv_df is not None and 'mean_perplexity' in gv_df.columns):
+       (gv_df is not None and 'mean_perplexity' in gv_df.columns) or \
+       (ocrv1_df is not None and 'mean_perplexity' in ocrv1_df.columns):
         print(f"  Perplexity: distribution, vs confidence, percentiles")
+
+
+def plot_perplexity_by_system(combined_df: pd.DataFrame, save_path: str = None):
+    """
+    Compare perplexity distributions between OCR systems
+    """
+    fig, ax = plt.subplots(figsize=(12, 6))
+    
+    systems = ['google_ocr', 'ocrv1-ws-ldv1']
+    data_to_plot = []
+    labels = []
+    
+    for system in systems:
+        system_df = combined_df[combined_df['ocr_system'] == system]
+        if len(system_df) > 0 and 'mean_perplexity' in system_df.columns:
+            perp_valid = system_df['mean_perplexity'].replace([np.inf, -np.inf], np.nan).dropna()
+            if len(perp_valid) > 0:
+                data_to_plot.append(np.log10(perp_valid))
+                labels.append(f"{system}\n(n={len(perp_valid)})")
+    
+    if not data_to_plot:
+        print("Warning: No valid perplexity data for system comparison")
+        plt.close()
+        return
+    
+    bp = ax.boxplot(data_to_plot, labels=labels, patch_artist=True)
+    
+    # Color the boxes
+    colors = ['lightblue', 'lightgreen']
+    for patch, color in zip(bp['boxes'], colors):
+        patch.set_facecolor(color)
+    
+    ax.set_ylabel('Mean Perplexity (log10 scale)')
+    ax.set_title('Perplexity Distribution by OCR System')
+    ax.grid(True, alpha=0.3, axis='y')
+    
+    # Add secondary y-axis with actual perplexity values
+    ax2 = ax.secondary_yaxis('right', functions=(lambda x: 10**x, lambda x: np.log10(x)))
+    ax2.set_ylabel('Actual Perplexity')
+    
+    plt.tight_layout()
+    
+    if save_path:
+        plt.savefig(save_path, dpi=300, bbox_inches='tight')
+        print(f"Saved: {save_path}")
+    else:
+        plt.show()
+    
+    plt.close()
+
+
+def plot_perplexity_by_print_method(combined_df: pd.DataFrame, save_path: str = None, top_n: int = 10):
+    """
+    Compare perplexity across print methods (top N by volume count)
+    """
+    if 'print_method' not in combined_df.columns:
+        print("Warning: No print_method column in data")
+        return
+    
+    df_with_pm = combined_df[combined_df['print_method'].notna()].copy()
+    
+    if len(df_with_pm) == 0:
+        print("Warning: No volumes with print method metadata")
+        return
+    
+    # Get top N print methods by volume count
+    pm_counts = df_with_pm['print_method'].value_counts().head(top_n)
+    top_pms = pm_counts.index.tolist()
+    
+    fig, ax = plt.subplots(figsize=(14, 8))
+    
+    data_to_plot = []
+    labels = []
+    
+    for pm in top_pms:
+        pm_df = df_with_pm[df_with_pm['print_method'] == pm]
+        if 'mean_perplexity' in pm_df.columns:
+            perp_valid = pm_df['mean_perplexity'].replace([np.inf, -np.inf], np.nan).dropna()
+            if len(perp_valid) > 0:
+                data_to_plot.append(np.log10(perp_valid))
+                # Truncate long names
+                pm_short = pm.replace('PrintMethod_', '')
+                labels.append(f"{pm_short}\n(n={len(perp_valid)})")
+    
+    if not data_to_plot:
+        print("Warning: No valid perplexity data for print method comparison")
+        plt.close()
+        return
+    
+    bp = ax.boxplot(data_to_plot, labels=labels, patch_artist=True)
+    
+    # Color the boxes with a gradient
+    colors = plt.cm.Set3(np.linspace(0, 1, len(bp['boxes'])))
+    for patch, color in zip(bp['boxes'], colors):
+        patch.set_facecolor(color)
+    
+    ax.set_ylabel('Mean Perplexity (log10 scale)')
+    ax.set_xlabel('Print Method')
+    ax.set_title(f'Perplexity Distribution by Print Method (Top {len(data_to_plot)})')
+    ax.grid(True, alpha=0.3, axis='y')
+    plt.xticks(rotation=45, ha='right')
+    
+    # Add secondary y-axis
+    ax2 = ax.secondary_yaxis('right', functions=(lambda x: 10**x, lambda x: np.log10(x)))
+    ax2.set_ylabel('Actual Perplexity')
+    
+    plt.tight_layout()
+    
+    if save_path:
+        plt.savefig(save_path, dpi=300, bbox_inches='tight')
+        print(f"Saved: {save_path}")
+    else:
+        plt.show()
+    
+    plt.close()
+
+
+def plot_perplexity_by_script(combined_df: pd.DataFrame, save_path: str = None):
+    """
+    Compare perplexity across scripts
+    """
+    if 'script' not in combined_df.columns:
+        print("Warning: No script column in data")
+        return
+    
+    df_with_script = combined_df[combined_df['script'].notna()].copy()
+    
+    if len(df_with_script) == 0:
+        print("Warning: No volumes with script metadata")
+        return
+    
+    fig, ax = plt.subplots(figsize=(12, 6))
+    
+    scripts = df_with_script['script'].unique()
+    data_to_plot = []
+    labels = []
+    
+    for script in scripts:
+        script_df = df_with_script[df_with_script['script'] == script]
+        if 'mean_perplexity' in script_df.columns:
+            perp_valid = script_df['mean_perplexity'].replace([np.inf, -np.inf], np.nan).dropna()
+            if len(perp_valid) > 0:
+                data_to_plot.append(np.log10(perp_valid))
+                script_short = script.replace('Script', '')
+                labels.append(f"{script_short}\n(n={len(perp_valid)})")
+    
+    if not data_to_plot:
+        print("Warning: No valid perplexity data for script comparison")
+        plt.close()
+        return
+    
+    bp = ax.boxplot(data_to_plot, labels=labels, patch_artist=True)
+    
+    # Color the boxes
+    colors = plt.cm.Pastel1(np.linspace(0, 1, len(bp['boxes'])))
+    for patch, color in zip(bp['boxes'], colors):
+        patch.set_facecolor(color)
+    
+    ax.set_ylabel('Mean Perplexity (log10 scale)')
+    ax.set_xlabel('Script')
+    ax.set_title('Perplexity Distribution by Script')
+    ax.grid(True, alpha=0.3, axis='y')
+    
+    # Add secondary y-axis
+    ax2 = ax.secondary_yaxis('right', functions=(lambda x: 10**x, lambda x: np.log10(x)))
+    ax2.set_ylabel('Actual Perplexity')
+    
+    plt.tight_layout()
+    
+    if save_path:
+        plt.savefig(save_path, dpi=300, bbox_inches='tight')
+        print(f"Saved: {save_path}")
+    else:
+        plt.show()
+    
+    plt.close()
+
+
+def plot_system_by_print_method_heatmap(combined_df: pd.DataFrame, save_path: str = None):
+    """
+    Heatmap showing average perplexity for system × print method combinations
+    """
+    if 'ocr_system' not in combined_df.columns or 'print_method' not in combined_df.columns:
+        print("Warning: Missing required columns for heatmap")
+        return
+    
+    df_filtered = combined_df[(combined_df['ocr_system'].notna()) & 
+                               (combined_df['print_method'].notna())].copy()
+    
+    if len(df_filtered) == 0 or 'mean_perplexity' not in df_filtered.columns:
+        print("Warning: No valid data for heatmap")
+        return
+    
+    # Calculate average perplexity for each combination
+    pivot_data = df_filtered.groupby(['ocr_system', 'print_method'])['mean_perplexity'].agg([
+        ('avg_perplexity', lambda x: x.replace([np.inf, -np.inf], np.nan).dropna().mean()),
+        ('count', 'count')
+    ]).reset_index()
+    
+    # Only keep combinations with at least 5 volumes
+    pivot_data = pivot_data[pivot_data['count'] >= 5]
+    
+    if len(pivot_data) == 0:
+        print("Warning: Not enough data for heatmap")
+        return
+    
+    # Create pivot table
+    pivot_table = pivot_data.pivot(index='print_method', columns='ocr_system', values='avg_perplexity')
+    
+    # Sort by overall average
+    pivot_table['_avg'] = pivot_table.mean(axis=1)
+    pivot_table = pivot_table.sort_values('_avg')
+    pivot_table = pivot_table.drop('_avg', axis=1)
+    
+    # Limit to top 15 print methods
+    if len(pivot_table) > 15:
+        pivot_table = pivot_table.head(15)
+    
+    fig, ax = plt.subplots(figsize=(10, max(8, len(pivot_table) * 0.4)))
+    
+    im = ax.imshow(pivot_table.values, cmap='RdYlGn_r', aspect='auto')
+    
+    # Set ticks
+    ax.set_xticks(np.arange(len(pivot_table.columns)))
+    ax.set_yticks(np.arange(len(pivot_table.index)))
+    ax.set_xticklabels(pivot_table.columns)
+    ax.set_yticklabels([pm.replace('PrintMethod_', '') for pm in pivot_table.index])
+    
+    # Rotate x labels
+    plt.setp(ax.get_xticklabels(), rotation=45, ha="right", rotation_mode="anchor")
+    
+    # Add colorbar
+    cbar = plt.colorbar(im, ax=ax)
+    cbar.set_label('Average Perplexity', rotation=270, labelpad=20)
+    
+    # Add text annotations
+    for i in range(len(pivot_table.index)):
+        for j in range(len(pivot_table.columns)):
+            val = pivot_table.iloc[i, j]
+            if not np.isnan(val):
+                text = ax.text(j, i, f'{val:.0f}',
+                             ha="center", va="center", color="black", fontsize=8)
+    
+    ax.set_title('Average Perplexity: OCR System × Print Method')
+    ax.set_xlabel('OCR System')
+    ax.set_ylabel('Print Method')
+    
+    plt.tight_layout()
+    
+    if save_path:
+        plt.savefig(save_path, dpi=300, bbox_inches='tight')
+        print(f"Saved: {save_path}")
+    else:
+        plt.show()
+    
+    plt.close()
+
+
+def generate_metadata_plots(output_dir: str = 'output', data_dir: str = 'data', 
+                            plots_dir: str = 'plots'):
+    """
+    Generate all plots with metadata dimensions
+    """
+    from metadata_loader import load_all_stats_with_metadata
+    
+    # Create plots directory if it doesn't exist
+    Path(plots_dir).mkdir(exist_ok=True)
+    
+    print("Loading statistics and metadata...")
+    combined_df = load_all_stats_with_metadata(output_dir, data_dir)
+    
+    if combined_df.empty:
+        print("No data available")
+        return
+    
+    print(f"Loaded {len(combined_df)} volumes with metadata")
+    
+    # Generate plots
+    print("\nGenerating metadata-based plots...")
+    
+    if 'mean_perplexity' in combined_df.columns:
+        print("  - Perplexity by OCR system...")
+        plot_perplexity_by_system(combined_df, 
+                                  save_path=f"{plots_dir}/perplexity_by_system.png")
+        
+        if 'print_method' in combined_df.columns:
+            print("  - Perplexity by print method...")
+            plot_perplexity_by_print_method(combined_df,
+                                           save_path=f"{plots_dir}/perplexity_by_print_method.png")
+            
+            print("  - System × Print method heatmap...")
+            plot_system_by_print_method_heatmap(combined_df,
+                                               save_path=f"{plots_dir}/system_x_print_method_heatmap.png")
+        
+        if 'script' in combined_df.columns:
+            print("  - Perplexity by script...")
+            plot_perplexity_by_script(combined_df,
+                                     save_path=f"{plots_dir}/perplexity_by_script.png")
+    
+    print("\n✓ Metadata plots generated successfully!")
+    print(f"  Plots saved in: {plots_dir}/")
+
 
 
 if __name__ == '__main__':
@@ -519,11 +843,18 @@ if __name__ == '__main__':
                        help='Directory containing stats files')
     parser.add_argument('--plots-dir', default='plots',
                        help='Directory to save plots')
+    parser.add_argument('--metadata', action='store_true',
+                       help='Generate metadata-based plots (by system, print method, script)')
+    parser.add_argument('--data-dir', default='data',
+                       help='Directory containing metadata CSV files (for --metadata)')
     
     args = parser.parse_args()
     
     try:
-        generate_all_plots(args.output_dir, args.plots_dir)
+        if args.metadata:
+            generate_metadata_plots(args.output_dir, args.data_dir, args.plots_dir)
+        else:
+            generate_all_plots(args.output_dir, args.plots_dir)
     except ImportError:
         print("Error: matplotlib not installed")
         print("Install with: pip install matplotlib")

@@ -144,6 +144,55 @@ def process_google_vision_volume(volume_info: Dict[str, str]) -> Optional[Dict[s
         return None
 
 
+def process_ocrv1_volume(volume_info: Dict[str, str]) -> Optional[Dict[str, Any]]:
+    """
+    Process a single OCRv1-WS-LDv1 volume and compute statistics
+    
+    Args:
+        volume_info: Dict with w_id, i_id, i_version, volume_id
+    
+    Returns:
+        Dictionary with volume info and computed statistics, or None if error
+    """
+    w_id = volume_info['w_id']
+    i_id = volume_info['i_id']
+    i_version = volume_info['i_version']
+    volume_id = volume_info['volume_id']
+    
+    s3_path = S3_OCRV1_PATH_TEMPLATE.format(
+        bucket=S3_BUCKET,
+        w_id=w_id,
+        i_id=i_id,
+        i_version=i_version
+    )
+    
+    try:
+        # Read parquet file from S3
+        df = pd.read_parquet(s3_path)
+        
+        # Compute statistics
+        stats = compute_ocrv1_stats(df)
+        
+        # Add volume identifiers
+        result = {
+            'w_id': w_id,
+            'i_id': i_id,
+            'i_version': i_version,
+            'volume_id': volume_id,
+            's3_path': s3_path,
+            **stats
+        }
+        
+        return result
+        
+    except FileNotFoundError:
+        logger.warning(f"File not found: {s3_path}")
+        return None
+    except Exception as e:
+        logger.error(f"Error processing {s3_path}: {str(e)}")
+        return None
+
+
 def process_volumes_parallel(volumes: List[Dict[str, str]], 
                             processor_func,
                             max_workers: int = 4,
